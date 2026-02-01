@@ -1,9 +1,7 @@
 version: "3.9"
 
 services:
-  app:
-    image: crud_app:1.0.2
-    pull_policy: never
+    build: .
     container_name: crud_app
     restart: unless-stopped
     ports:
