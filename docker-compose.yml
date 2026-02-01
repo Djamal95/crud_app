@@ -1,7 +1,7 @@
-version: "3.9"
-
 services:
+  app:
     build: .
+    image: crud_app-app
     container_name: crud_app
     restart: unless-stopped
     ports:
@@ -16,7 +16,7 @@ services:
       DB_HOST: db
       DB_PORT: 3306
       DB_DATABASE: laravel_db
-      DB_USERNAME: root
+      DB_USERNAME: laravel
       DB_PASSWORD: toor
 
   db:
