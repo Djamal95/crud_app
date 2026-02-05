@@ -4,8 +4,6 @@ services:
     image: crud_app-app
     container_name: crud_app
     restart: unless-stopped
-    ports:
-      - "8081:80"
     volumes:
       - .:/var/www/html
     depends_on:
@@ -18,6 +16,8 @@ services:
       DB_DATABASE: laravel_db
       DB_USERNAME: laravel
       DB_PASSWORD: toor
+    networks:
+      - app_net
 
   db:
     image: mysql:8.0
@@ -31,8 +31,21 @@ services:
       MYSQL_ROOT_PASSWORD: toor
     volumes:
       - dbdata:/var/lib/mysql
-    ports:
-      - "3306:3306"
+    # Pas besoin d'exposer 3306 en CI
+    # ports:
+    #   - "3306:3306"
+    networks:
+      - app_net
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -ptoor | grep 'mysqld is alive'"]
+      interval: 3s
+      timeout: 2s
+      retries: 30
+      start_period: 10s
 
 volumes:
   dbdata:
+
+networks:
+  app_net:
+    driver: bridge
