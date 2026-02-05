@@ -1,51 +1,45 @@
-FROM php:8.2-apache
+# ---------- Stage 1: builder ----------
+FROM php:8.2-cli AS builder
 
-# Activer mod_rewrite (Laravel)
-RUN a2enmod rewrite
-
-# Installer dépendances système
+# OS deps (ex: zip, git, libicu, libonig si nécessaire)
 RUN apt-get update && apt-get install -y \
-    git \
-    unzip \
-    zip \
-    libpng-dev \
-    libzip-dev \
-    libonig-dev \
-    libicu-dev \
-    && docker-php-ext-install \
-        pdo_mysql \
-        mbstring \
-        bcmath \
-        gd \
-        zip \
-        intl \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    git unzip libzip-dev libicu-dev libpq-dev libonig-dev libpng-dev \
+ && docker-php-ext-install intl pdo pdo_mysql zip \
+ && rm -rf /var/lib/apt/lists/*
 
-# Installer Composer
+# Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Définir le dossier de travail
-WORKDIR /var/www/html
+# Xdebug optionnel pour la CI (couverture) — activable via env
+RUN pecl install xdebug && docker-php-ext-enable xdebug || true
 
-# Copier tout le projet
+WORKDIR /app
+# Copie des manifestes pour tirer profit du cache
+COPY composer.json composer.lock ./
+
+# Install deps en mode dev (CI), cache Composer dans /tmp/composer-cache
+ARG COMPOSER_CACHE_DIR=/tmp/composer-cache
+RUN mkdir -p ${COMPOSER_CACHE_DIR}
+RUN composer install --no-interaction --prefer-dist --no-ansi --no-progress
+
+# Copie du code (après install pour profiter du cache)
 COPY . .
 
-# Config Apache pour Laravel
-RUN sed -i 's|/var/www/html|/var/www/html/public|g' /etc/apache2/sites-available/000-default.conf
+# ---------- Stage 2: runtime ----------
+FROM php:8.2-fpm AS runtime
 
-# Permissions Laravel
-RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 775 storage bootstrap/cache
+RUN apt-get update && apt-get install -y \
+    libicu-dev libzip-dev libpq-dev libpng-dev \
+ && docker-php-ext-install intl pdo pdo_mysql zip \
+ && rm -rf /var/lib/apt/lists/*
 
-# Exposer le port Apache
-EXPOSE 80
+WORKDIR /var/www/html
+# On ne copie que l’essentiel depuis builder
+COPY --from=builder /app /var/www/html
 
-# Commande de démarrage (Laravel setup + migrate)
-CMD bash -c "\
-    cp .env.example .env && \
-    composer install --no-interaction --prefer-dist && \
-    php artisan key:generate --force && \
-    php artisan migrate --force && \
-    apache2-foreground \
-"
+# Variables à ajuster
+ENV APP_ENV=production \
+    APP_DEBUG=false
+
+# Entrypoint / healthcheck éventuels
+CMD ["php-fpm", "-F"]
